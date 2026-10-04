@@ -44,7 +44,7 @@ services:
       - key: DATA_DIR
         value: /data
       - key: CORS_ORIGINS
-        value: "*"                   # Tightened after UI URL is known
+        value: https://clinready-ui.onrender.com
 
   # ── 2. Spring Boot — API gateway ────────────────────────────────────────────
   - type: web
@@ -55,11 +55,10 @@ services:
     plan: free
     healthCheckPath: /actuator/health
     envVars:
+      # fromService 'host' returns a bare hostname with no scheme/port, which
+      # breaks Spring's RestClient URI parsing. Use the full public URL instead.
       - key: AI_SERVICE_URL
-        fromService:
-          name: clinready-api
-          type: web
-          property: host             # Render injects internal hostname
+        value: https://clinready-api.onrender.com
       - key: SERVICE_TOKEN
         fromService:
           name: clinready-api
@@ -71,7 +70,7 @@ services:
       - key: DEMO_VIEWER_TOKEN
         value: local-demo-viewer-token
       - key: ALLOWED_ORIGINS
-        value: "*"                   # Tightened after UI URL is known
+        value: https://clinready-ui.onrender.com
 
   # NOTE: The background worker runs inline inside clinready-api (see above)
   # because Render's free tier does not support standalone worker services.
@@ -101,7 +100,6 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      # GATEWAY_URL: set this to your clinready-gateway public URL after first deploy
-      # Example: https://clinready-gateway.onrender.com
+      # Public URL of the gateway — baked into config.json at build time
       - key: GATEWAY_URL
-        value: ""
+        value: https://clinready-gateway.onrender.com
