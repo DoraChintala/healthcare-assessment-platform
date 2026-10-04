@@ -272,6 +272,11 @@ export class AppComponent implements OnDestroy {
     return new HttpHeaders({ Authorization: 'Bearer ' + this.token, ...extra });
   }
 
+  /** Base URL for all API calls. Empty string = same-origin (local dev proxy). */
+  private get apiBase(): string {
+    return (window as unknown as Record<string, unknown>)['__GATEWAY_URL__'] as string ?? '';
+  }
+
   message(err: unknown): void {
     if (err instanceof HttpErrorResponse) {
       this.error = typeof err.error?.detail === 'string'
@@ -349,8 +354,8 @@ export class AppComponent implements OnDestroy {
   async connect(): Promise<void> {
     this.connecting = true; this.error = '';
     try {
-      this.jobs    = await firstValueFrom(this.http.get<Job[]>   ('/api/jobs',    { headers: this.headers() }));
-      this.samples = await firstValueFrom(this.http.get<Sample[]>('/api/samples', { headers: this.headers() }));
+      this.jobs    = await firstValueFrom(this.http.get<Job[]>   (`${this.apiBase}/api/jobs`,    { headers: this.headers() }));
+      this.samples = await firstValueFrom(this.http.get<Sample[]>(`${this.apiBase}/api/samples`, { headers: this.headers() }));
       this.connected = true;
       if (!this.resume && this.samples.length) this.loadSample('0');
       await this.refresh();
@@ -441,7 +446,7 @@ export class AppComponent implements OnDestroy {
     this.refreshing = true;
     try {
       this.assessments = await firstValueFrom(
-        this.http.get<Assessment[]>('/api/assessments', { headers: this.headers() })
+        this.http.get<Assessment[]>(`${this.apiBase}/api/assessments`, { headers: this.headers() })
       );
       if (this.selected) {
         this.selected = this.assessments.find(x => x.id === this.selected!.id) ?? this.selected;
@@ -469,7 +474,7 @@ export class AppComponent implements OnDestroy {
     }
     try {
       this.selected = await firstValueFrom(
-        this.http.post<Assessment>('/api/assessments', body, {
+        this.http.post<Assessment>(`${this.apiBase}/api/assessments`, body, {
           headers: this.headers({ 'Idempotency-Key': this.submissionKey }),
         })
       );
@@ -504,7 +509,7 @@ export class AppComponent implements OnDestroy {
     if (!this.selected) return;
     try {
       this.events = await firstValueFrom(
-        this.http.get<Audit[]>(`/api/assessments/${this.selected.id}/audit`, { headers: this.headers() })
+        this.http.get<Audit[]>(`${this.apiBase}/api/assessments/${this.selected.id}/audit`, { headers: this.headers() })
       );
     } catch (err) {
       this.message(err);
@@ -525,7 +530,7 @@ export class AppComponent implements OnDestroy {
     try {
       this.selected = await firstValueFrom(
         this.http.post<Assessment>(
-          `/api/assessments/${this.selected.id}/review`,
+          `${this.apiBase}/api/assessments/${this.selected.id}/review`,
           { action, notes: this.notes, corrections, expected_version: this.selected.version },
           { headers: this.headers() }
         )

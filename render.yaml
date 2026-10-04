@@ -1,0 +1,117 @@
+# ClinReady — Render Blueprint
+# Deploy everything from one GitHub repo.
+#
+# HOW TO DEPLOY:
+#   1. Go to https://dashboard.render.com/blueprints
+#   2. Click "New Blueprint Instance"
+#   3. Connect this repository
+#   4. Render reads this file and creates all 4 services automatically
+#
+# FREE TIER NOTES:
+#   - Static site (UI): never sleeps, instant load
+#   - Web services (api, gateway): sleep after 15 min inactivity, wake in ~30s
+#   - Background worker: sleeps when idle
+#   - No paid database needed — SQLite stored in /data volume on each service
+#
+# AFTER DEPLOY:
+#   1. Copy the clinready-gateway public URL (e.g. https://clinready-gateway.onrender.com)
+#   2. Set it as GATEWAY_URL in the clinready-ui environment variables
+#   3. Trigger a redeploy of clinready-ui
+#   4. Copy the clinready-ui public URL and set it as ALLOWED_ORIGINS in clinready-gateway
+
+services:
+
+  # ── 1. Python FastAPI — AI service ─────────────────────────────────────────
+  - type: web
+    name: clinready-api
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_MODE
+        value: mock
+      - key: RETRIEVAL_MODE
+        value: local
+      - key: SERVICE_TOKEN
+        generateValue: true          # Render generates a random secret
+      - key: DATA_DIR
+        value: /data
+      - key: CORS_ORIGINS
+        value: "*"                   # Tightened after UI URL is known
+
+  # ── 2. Spring Boot — API gateway ────────────────────────────────────────────
+  - type: web
+    name: clinready-gateway
+    runtime: docker
+    dockerfilePath: ./gateway/Dockerfile
+    dockerContext: ./gateway
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: AI_SERVICE_URL
+        fromService:
+          name: clinready-api
+          type: web
+          property: host             # Render injects internal hostname
+      - key: SERVICE_TOKEN
+        fromService:
+          name: clinready-api
+          type: web
+          envVarKey: SERVICE_TOKEN   # Same token as AI service
+      - key: DEMO_REVIEWER_TOKEN
+        value: clinready-reviewer-2024
+      - key: DEMO_VIEWER_TOKEN
+        value: clinready-viewer-2024
+      - key: ALLOWED_ORIGINS
+        value: "*"                   # Tightened after UI URL is known
+
+  # ── 3. Python worker — background queue processor ──────────────────────────
+  - type: worker
+    name: clinready-worker
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free
+    dockerCommand: python -m app.worker
+    envVars:
+      - key: LLM_MODE
+        value: mock
+      - key: RETRIEVAL_MODE
+        value: local
+      - key: SERVICE_TOKEN
+        fromService:
+          name: clinready-api
+          type: web
+          envVarKey: SERVICE_TOKEN
+      - key: DATA_DIR
+        value: /data
+
+  # ── 4. Angular UI — static site (CDN, never sleeps) ────────────────────────
+  - type: web
+    name: clinready-ui
+    runtime: static
+    buildCommand: cd ui && npm ci && npm run build
+    staticPublishPath: ui/dist/assessment-ui/browser
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    routes:
+      # All Angular routes → index.html (SPA fallback)
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # GATEWAY_URL: set this to your clinready-gateway public URL after first deploy
+      # Example: https://clinready-gateway.onrender.com
+      - key: GATEWAY_URL
+        value: ""

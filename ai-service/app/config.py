@@ -15,4 +15,5 @@ OUTPUT_USD_PER_MILLION = float(os.getenv('OUTPUT_USD_PER_MILLION', '0'))
 QDRANT_URL = os.getenv('QDRANT_URL', '')
 RETRIEVAL_MODE = os.getenv('RETRIEVAL_MODE', 'local')
 LEASE_SECONDS = int(os.getenv('LEASE_SECONDS', '300'))
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', '')   # comma-separated allowed origins
 MAX_ATTEMPTS = 3

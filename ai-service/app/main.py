@@ -2,6 +2,7 @@ import hmac
 import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from . import config, store
@@ -13,7 +14,17 @@ async def lifespan(app):
     store.init_db()
     yield
 
-app = FastAPI(title='Healthcare Assessment AI Service', version='0.1.0',lifespan=lifespan)
+app = FastAPI(title='Healthcare Assessment AI Service', version='0.1.0', lifespan=lifespan)
+
+# CORS — allow the gateway origin (and optionally direct browser access in dev)
+_allowed = [o.strip() for o in config.CORS_ORIGINS.split(',') if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed or ['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
 def identity(x_service_token: str = Header(''), x_tenant_id: str = Header(''), x_actor_id: str = Header(''), x_role: str = Header('')):
     if not hmac.compare_digest(x_service_token,config.SERVICE_TOKEN):
