@@ -1,5 +1,7 @@
 import hmac
+import os
 import re
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,10 +11,28 @@ from . import config, store
 from .catalog import JOBS, job_for, load
 from .models import AssessmentRequest, ReviewRequest, Candidate
 
+# Optional in-process worker. Enabled on platforms that do not support a
+# separate background-worker service (e.g. Render free tier). The worker
+# normally runs as its own process; this is a single-node convenience.
+_worker_stop = threading.Event()
+
 @asynccontextmanager
 async def lifespan(app):
     store.init_db()
-    yield
+    worker_thread = None
+    if os.getenv('RUN_WORKER_INLINE', 'false').lower() == 'true':
+        from .worker import run as run_worker
+        _worker_stop.clear()
+        worker_thread = threading.Thread(
+            target=run_worker, args=(_worker_stop,), daemon=True, name='inline-worker'
+        )
+        worker_thread.start()
+    try:
+        yield
+    finally:
+        _worker_stop.set()
+        if worker_thread:
+            worker_thread.join(timeout=5)
 
 app = FastAPI(title='Healthcare Assessment AI Service', version='0.1.0', lifespan=lifespan)
 

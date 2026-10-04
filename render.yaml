@@ -21,7 +21,10 @@
 
 services:
 
-  # ── 1. Python FastAPI — AI service ─────────────────────────────────────────
+  # ── 1. Python FastAPI — AI service (runs worker inline) ────────────────────
+  # Render free tier does not support standalone background workers, so the
+  # LangGraph worker runs as a daemon thread inside this service via
+  # RUN_WORKER_INLINE=true. Single-node, but complete and functional.
   - type: web
     name: clinready-api
     runtime: docker
@@ -34,6 +37,8 @@ services:
         value: mock
       - key: RETRIEVAL_MODE
         value: local
+      - key: RUN_WORKER_INLINE
+        value: "true"                # Run the worker inside this service
       - key: SERVICE_TOKEN
         generateValue: true          # Render generates a random secret
       - key: DATA_DIR
@@ -67,28 +72,12 @@ services:
       - key: ALLOWED_ORIGINS
         value: "*"                   # Tightened after UI URL is known
 
-  # ── 3. Python worker — background queue processor ──────────────────────────
-  - type: worker
-    name: clinready-worker
-    runtime: docker
-    dockerfilePath: ./ai-service/Dockerfile
-    dockerContext: ./ai-service
-    plan: free
-    dockerCommand: python -m app.worker
-    envVars:
-      - key: LLM_MODE
-        value: mock
-      - key: RETRIEVAL_MODE
-        value: local
-      - key: SERVICE_TOKEN
-        fromService:
-          name: clinready-api
-          type: web
-          envVarKey: SERVICE_TOKEN
-      - key: DATA_DIR
-        value: /data
+  # NOTE: The background worker runs inline inside clinready-api (see above)
+  # because Render's free tier does not support standalone worker services.
+  # To scale: upgrade to a paid plan and split the worker into its own service
+  # with RUN_WORKER_INLINE unset and dockerCommand: python -m app.worker
 
-  # ── 4. Angular UI — static site (CDN, never sleeps) ────────────────────────
+  # ── 3. Angular UI — static site (CDN, never sleeps) ────────────────────────
   - type: web
     name: clinready-ui
     runtime: static
