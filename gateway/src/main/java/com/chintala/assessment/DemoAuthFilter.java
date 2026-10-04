@@ -28,6 +28,10 @@ public class DemoAuthFilter extends OncePerRequestFilter {
     }
     @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
+        // Let CORS preflight requests through without auth. The browser sends an
+        // OPTIONS request with no Authorization header before the real call;
+        // blocking it here would break all cross-origin requests.
+        if ("OPTIONS".equalsIgnoreCase(req.getMethod())) { chain.doFilter(req,res); return; }
         if (!req.getRequestURI().startsWith("/api/")) { chain.doFilter(req,res); return; }
         String auth = req.getHeader("Authorization");
         String token = auth != null && auth.startsWith("Bearer ") ? auth.substring(7) : "";
