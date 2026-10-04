@@ -1,0 +1,4 @@
+[
+  {"id":"rn-icu","title":"ICU Registered Nurse","minimum_years":3,"license_state":"VA","policy_ids":["policy-rn","policy-icu"],"version":"2026-demo-1"},
+  {"id":"rn-general","title":"Registered Nurse","minimum_years":1,"license_state":"VA","policy_ids":["policy-rn"],"version":"2026-demo-1"}
+]

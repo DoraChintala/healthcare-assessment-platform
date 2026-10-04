@@ -1,0 +1,5 @@
+[
+  {"id":"policy-rn","tenant":"demo-hospital","job_ids":["rn-icu","rn-general"],"version":"demo-1","text":"Demo RN policy: an active Virginia RN license must be confirmed against the simulated registry. Candidate claims do not constitute registry verification. Missing or conflicting records require reviewer clarification. All final decisions require a reviewer."},
+  {"id":"policy-icu","tenant":"demo-hospital","job_ids":["rn-icu"],"version":"demo-1","text":"Demo ICU assessment policy: the role requires at least three years of claimed nursing experience and an active Virginia license. Eligible candidates are recommended for an ICU knowledge assessment; the demo does not administer clinical exams."},
+  {"id":"private-policy","tenant":"other-hospital","job_ids":["rn-icu"],"version":"demo-1","text":"PRIVATE OTHER TENANT POLICY: this document must never appear in demo-hospital retrieval results."}
+]

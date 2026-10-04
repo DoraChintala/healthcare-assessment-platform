@@ -1,0 +1,4 @@
+[
+  {"license_number":"DEMO-VA-1001","state":"VA","credential":"RN","status":"ACTIVE","expires_on":"2099-12-31","source":"SIMULATED_REGISTRY"},
+  {"license_number":"DEMO-VA-1002","state":"VA","credential":"RN","status":"EXPIRED","expires_on":"2020-12-31","source":"SIMULATED_REGISTRY"}
+]

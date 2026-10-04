@@ -1,0 +1,42 @@
+<main>
+  <header><div class="brand">ASSESSMENT STUDIO <span>Portfolio demo</span></div><span class="environment">Synthetic data · Simulated registry</span></header>
+  <section class="hero"><div class="eyebrow">HEALTHCARE AI ENGINEERING</div><h1>Evidence before<br>recommendations.</h1><p>Review candidate claims, qualification rules and policy evidence in one traceable workflow.</p></section>
+  <section class="session panel"><label for="token">Demo access token</label><div class="inline"><input id="token" type="password" [(ngModel)]="token" [disabled]="connected" autocomplete="off"><button (click)="connect()" [disabled]="connecting || connected">{{connected ? 'Connected' : connecting ? 'Connecting…' : 'Connect to demo'}}</button></div><small>Use the reviewer or viewer token from your local configuration. Tokens stay in memory.</small></section>
+  <p class="error" role="alert" *ngIf="error">{{error}}</p>
+  <div class="workspace" *ngIf="connected">
+    <aside>
+      <section class="panel"><div class="eyebrow">NEW ASSESSMENT</div><h2>Candidate input</h2>
+        <label for="sample">Synthetic example</label><select id="sample" (change)="loadSample($any($event.target).value)"><option *ngFor="let sample of samples;let i=index" [value]="i">{{sample.label}}</option></select>
+        <label for="job">Role</label><select id="job" [(ngModel)]="jobId"><option *ngFor="let job of jobs" [value]="job.id">{{job.title}}</option></select>
+        <label for="resume">Resume text</label><textarea id="resume" [(ngModel)]="resume" rows="9" maxlength="30000"></textarea>
+        <button class="wide" (click)="submit()" [disabled]="busy || resume.length<10">{{busy ? 'Working…' : 'Create assessment'}}</button>
+        <small>Mock extraction uses labeled Experience, License and State fields. Free-form LLM extraction is configurable.</small>
+      </section>
+      <section class="panel"><div class="inline between"><h2>Assessments</h2><button class="subtle" (click)="refresh()">Refresh</button></div><p *ngIf="!assessments.length" class="muted">Create an assessment to begin.</p>
+        <button class="assessment" *ngFor="let row of assessments" (click)="select(row)" [class.active]="selected?.id===row.id"><span>{{row.job_id}}<small>{{row.id.slice(0,8)}}</small></span><span class="badge" [attr.data-state]="row.status">{{human(row.status)}}</span></button>
+      </section>
+    </aside>
+    <article class="panel detail" *ngIf="selected;else empty">
+      <div class="inline between"><div><div class="eyebrow">ASSESSMENT {{selected.id.slice(0,8)}}</div><h2>Evidence and review</h2></div><span class="badge" [attr.data-state]="selected.status">{{human(selected.status)}}</span></div>
+      <p class="muted" *ngIf="selected.status==='QUEUED' || selected.status==='PROCESSING'">The worker is processing this assessment. Status updates automatically.</p>
+      <p class="error" *ngIf="selected.error">{{selected.error}}</p>
+      <ng-container *ngIf="selected.result as result">
+        <section class="recommendation" *ngIf="result.summary"><div class="eyebrow">RULE-BASED RECOMMENDATION</div><h3>{{human(result.summary.recommendation)}}</h3><p>{{result.summary.text}}</p></section>
+        <h3>Qualification checks</h3><div class="rule" *ngFor="let rule of result.rules"><span class="badge" [attr.data-state]="rule.status">{{rule.status}}</span><div><strong>{{rule.id}}</strong><p>{{rule.reason}}</p><small>Source: {{rule.source}}</small></div></div>
+        <h3>Extracted claims</h3><div *ngIf="result.candidate as candidate"><div class="facts"><div><small>Experience claim</small><strong>{{candidate.years_experience ?? 'Missing'}} years</strong></div><div><small>Supplied license</small><strong>{{candidate.license_number || 'Missing'}}</strong></div><div><small>Supplied state</small><strong>{{candidate.license_state || 'Missing'}}</strong></div></div><div class="evidence" *ngFor="let entry of candidate.evidence | keyvalue"><strong>{{human(entry.key)}}</strong><blockquote>{{entry.value.quote}}</blockquote><small>Source: {{entry.value.source_id}}</small></div></div>
+        <h3>Retrieved policy evidence</h3><details *ngFor="let policy of result.policies"><summary>{{policy.id}} · {{policy.version}}</summary><p>{{policy.text}}</p></details>
+        <p class="muted" *ngIf="result.usage">Extraction mode: {{result.usage.provider || 'unavailable'}} · {{result.usage.input_tokens || 0}} input tokens · {{result.usage.output_tokens || 0}} output tokens.<span *ngIf="result.usage.cost_configured"> Estimated successful-call model cost: {{result.usage.estimated_model_cost_usd | currency:'USD':'symbol':'1.6-6'}}.</span></p>
+        <section class="review" *ngIf="selected.status==='AWAITING_CLARIFICATION' || selected.status==='AWAITING_APPROVAL'">
+          <h3>{{selected.status==='AWAITING_CLARIFICATION' ? 'Resolve missing evidence' : 'Final reviewer decision'}}</h3>
+          <div class="corrections" *ngIf="selected.status==='AWAITING_CLARIFICATION'"><div><label for="license">Corrected license</label><input id="license" [(ngModel)]="correctionLicense" placeholder="DEMO-VA-1001"></div><div><label for="state">State</label><input id="state" [(ngModel)]="correctionState" maxlength="2" placeholder="VA"></div><div><label for="years">Experience claim</label><input id="years" type="number" min="0" max="60" [(ngModel)]="correctionYears"></div></div>
+          <label for="notes">Reviewer notes and evidence</label><textarea id="notes" [(ngModel)]="notes" rows="3" maxlength="2000" placeholder="Explain the correction or decision"></textarea>
+          <div class="inline"><button *ngIf="selected.status==='AWAITING_CLARIFICATION'" (click)="review('clarify')" [disabled]="busy || notes.trim().length<3">Save and resume</button><ng-container *ngIf="selected.status==='AWAITING_APPROVAL'"><button (click)="review('approve')" [disabled]="busy || notes.trim().length<3">Approve recommendation</button><button class="secondary" (click)="review('reject')" [disabled]="busy || notes.trim().length<3">Override recommendation</button></ng-container></div><small>Approval confirms the assessment recommendation. It does not automatically hire or reject a candidate.</small>
+        </section>
+        <section class="decision" *ngIf="result.decision"><h3>Recorded decision</h3><p>{{result.decision.action==='approve' ? 'Recommendation approved' : 'Recommendation overridden'}} by {{result.decision.reviewer}}</p><p>{{result.decision.notes}}</p></section>
+      </ng-container>
+      <div class="inline between"><h3>Audit trail</h3><button class="subtle" (click)="loadAudit()">Load events</button></div><div class="audit" *ngFor="let event of events"><strong>{{human(event.action)}}</strong><small>{{event.actor}} · {{event.created_at | date:'short'}}</small><pre>{{event.detail | json}}</pre></div>
+    </article>
+    <ng-template #empty><article class="panel placeholder"><div class="eyebrow">REVIEW WORKSPACE</div><h2>Every recommendation<br>needs its evidence.</h2><p>Select an assessment to inspect claims, rule results, retrieved policies and reviewer decisions.</p></article></ng-template>
+  </div>
+  <footer>Local portfolio starter · Claims remain separate from simulated registry checks · Human decisions are recorded</footer>
+</main>

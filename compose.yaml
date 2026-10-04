@@ -1,0 +1,80 @@
+name: healthcare-assessment
+x-ai-environment: &ai-environment
+  DATABASE_URL: postgresql+psycopg://assessment:${POSTGRES_PASSWORD:-local-demo-db-password}@postgres:5432/assessment
+  CHECKPOINT_URL: postgresql://assessment:${POSTGRES_PASSWORD:-local-demo-db-password}@postgres:5432/assessment
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-local-demo-internal-token}
+  LLM_MODE: ${LLM_MODE:-mock}
+  LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8001/v1}
+  LLM_MODEL: ${LLM_MODEL:-your-model-name}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  INPUT_USD_PER_MILLION: ${INPUT_USD_PER_MILLION:-0}
+  OUTPUT_USD_PER_MILLION: ${OUTPUT_USD_PER_MILLION:-0}
+  QDRANT_URL: http://qdrant:6333
+  RETRIEVAL_MODE: qdrant
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: assessment
+      POSTGRES_USER: assessment
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-db-password}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U assessment -d assessment"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    volumes: [qdrant-data:/qdrant/storage]
+  seed:
+    build: ./ai-service
+    command: [python, -m, app.retrieval]
+    environment: *ai-environment
+    depends_on:
+      qdrant: {condition: service_started}
+    restart: on-failure
+  ai-api:
+    build: ./ai-service
+    environment: *ai-environment
+    depends_on:
+      postgres: {condition: service_healthy}
+      seed: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health',timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  worker:
+    build: ./ai-service
+    command: [python, -m, app.worker]
+    environment: *ai-environment
+    extra_hosts: [host.docker.internal:host-gateway]
+    depends_on:
+      ai-api: {condition: service_healthy}
+    restart: unless-stopped
+  gateway:
+    build: ./gateway
+    environment:
+      AI_SERVICE_URL: http://ai-api:8000
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-local-demo-internal-token}
+      DEMO_REVIEWER_TOKEN: ${DEMO_REVIEWER_TOKEN:-local-demo-reviewer-token}
+      DEMO_VIEWER_TOKEN: ${DEMO_VIEWER_TOKEN:-local-demo-viewer-token}
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      ai-api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3; cat <&3 | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  ui:
+    build: ./ui
+    ports: ["127.0.0.1:4200:8080"]
+    depends_on:
+      gateway: {condition: service_healthy}
+
+volumes:
+  postgres-data:
+  qdrant-data:

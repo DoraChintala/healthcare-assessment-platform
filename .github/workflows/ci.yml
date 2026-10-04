@@ -1,0 +1,31 @@
+name: Validate starter
+on: [push, pull_request]
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements.lock
+        working-directory: ai-service
+      - run: pytest -q
+        working-directory: ai-service
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - run: ./gradlew test bootJar
+        working-directory: gateway
+  angular:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: ui/package-lock.json}
+      - run: npm ci
+        working-directory: ui
+      - run: npm run build && npm run typecheck
+        working-directory: ui

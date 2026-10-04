@@ -1,0 +1,15 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: assessment-gateway
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+assessment:
+  ai-url: ${AI_SERVICE_URL:http://localhost:8000}
+  service-token: ${SERVICE_TOKEN:local-demo-internal-token}
+  reviewer-token: ${DEMO_REVIEWER_TOKEN:local-demo-reviewer-token}
+  viewer-token: ${DEMO_VIEWER_TOKEN:local-demo-viewer-token}
