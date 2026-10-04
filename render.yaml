@@ -65,10 +65,11 @@ services:
           name: clinready-api
           type: web
           envVarKey: SERVICE_TOKEN   # Same token as AI service
+      # These MUST match the token values in ui/src/app.component.ts demoUsers
       - key: DEMO_REVIEWER_TOKEN
-        value: clinready-reviewer-2024
+        value: local-demo-reviewer-token
       - key: DEMO_VIEWER_TOKEN
-        value: clinready-viewer-2024
+        value: local-demo-viewer-token
       - key: ALLOWED_ORIGINS
         value: "*"                   # Tightened after UI URL is known
 
