@@ -1,42 +1,1096 @@
-<main>
-  <header><div class="brand">ASSESSMENT STUDIO <span>Portfolio demo</span></div><span class="environment">Synthetic data · Simulated registry</span></header>
-  <section class="hero"><div class="eyebrow">HEALTHCARE AI ENGINEERING</div><h1>Evidence before<br>recommendations.</h1><p>Review candidate claims, qualification rules and policy evidence in one traceable workflow.</p></section>
-  <section class="session panel"><label for="token">Demo access token</label><div class="inline"><input id="token" type="password" [(ngModel)]="token" [disabled]="connected" autocomplete="off"><button (click)="connect()" [disabled]="connecting || connected">{{connected ? 'Connected' : connecting ? 'Connecting…' : 'Connect to demo'}}</button></div><small>Use the reviewer or viewer token from your local configuration. Tokens stay in memory.</small></section>
-  <p class="error" role="alert" *ngIf="error">{{error}}</p>
-  <div class="workspace" *ngIf="connected">
-    <aside>
-      <section class="panel"><div class="eyebrow">NEW ASSESSMENT</div><h2>Candidate input</h2>
-        <label for="sample">Synthetic example</label><select id="sample" (change)="loadSample($any($event.target).value)"><option *ngFor="let sample of samples;let i=index" [value]="i">{{sample.label}}</option></select>
-        <label for="job">Role</label><select id="job" [(ngModel)]="jobId"><option *ngFor="let job of jobs" [value]="job.id">{{job.title}}</option></select>
-        <label for="resume">Resume text</label><textarea id="resume" [(ngModel)]="resume" rows="9" maxlength="30000"></textarea>
-        <button class="wide" (click)="submit()" [disabled]="busy || resume.length<10">{{busy ? 'Working…' : 'Create assessment'}}</button>
-        <small>Mock extraction uses labeled Experience, License and State fields. Free-form LLM extraction is configurable.</small>
-      </section>
-      <section class="panel"><div class="inline between"><h2>Assessments</h2><button class="subtle" (click)="refresh()">Refresh</button></div><p *ngIf="!assessments.length" class="muted">Create an assessment to begin.</p>
-        <button class="assessment" *ngFor="let row of assessments" (click)="select(row)" [class.active]="selected?.id===row.id"><span>{{row.job_id}}<small>{{row.id.slice(0,8)}}</small></span><span class="badge" [attr.data-state]="row.status">{{human(row.status)}}</span></button>
-      </section>
-    </aside>
-    <article class="panel detail" *ngIf="selected;else empty">
-      <div class="inline between"><div><div class="eyebrow">ASSESSMENT {{selected.id.slice(0,8)}}</div><h2>Evidence and review</h2></div><span class="badge" [attr.data-state]="selected.status">{{human(selected.status)}}</span></div>
-      <p class="muted" *ngIf="selected.status==='QUEUED' || selected.status==='PROCESSING'">The worker is processing this assessment. Status updates automatically.</p>
-      <p class="error" *ngIf="selected.error">{{selected.error}}</p>
-      <ng-container *ngIf="selected.result as result">
-        <section class="recommendation" *ngIf="result.summary"><div class="eyebrow">RULE-BASED RECOMMENDATION</div><h3>{{human(result.summary.recommendation)}}</h3><p>{{result.summary.text}}</p></section>
-        <h3>Qualification checks</h3><div class="rule" *ngFor="let rule of result.rules"><span class="badge" [attr.data-state]="rule.status">{{rule.status}}</span><div><strong>{{rule.id}}</strong><p>{{rule.reason}}</p><small>Source: {{rule.source}}</small></div></div>
-        <h3>Extracted claims</h3><div *ngIf="result.candidate as candidate"><div class="facts"><div><small>Experience claim</small><strong>{{candidate.years_experience ?? 'Missing'}} years</strong></div><div><small>Supplied license</small><strong>{{candidate.license_number || 'Missing'}}</strong></div><div><small>Supplied state</small><strong>{{candidate.license_state || 'Missing'}}</strong></div></div><div class="evidence" *ngFor="let entry of candidate.evidence | keyvalue"><strong>{{human(entry.key)}}</strong><blockquote>{{entry.value.quote}}</blockquote><small>Source: {{entry.value.source_id}}</small></div></div>
-        <h3>Retrieved policy evidence</h3><details *ngFor="let policy of result.policies"><summary>{{policy.id}} · {{policy.version}}</summary><p>{{policy.text}}</p></details>
-        <p class="muted" *ngIf="result.usage">Extraction mode: {{result.usage.provider || 'unavailable'}} · {{result.usage.input_tokens || 0}} input tokens · {{result.usage.output_tokens || 0}} output tokens.<span *ngIf="result.usage.cost_configured"> Estimated successful-call model cost: {{result.usage.estimated_model_cost_usd | currency:'USD':'symbol':'1.6-6'}}.</span></p>
-        <section class="review" *ngIf="selected.status==='AWAITING_CLARIFICATION' || selected.status==='AWAITING_APPROVAL'">
-          <h3>{{selected.status==='AWAITING_CLARIFICATION' ? 'Resolve missing evidence' : 'Final reviewer decision'}}</h3>
-          <div class="corrections" *ngIf="selected.status==='AWAITING_CLARIFICATION'"><div><label for="license">Corrected license</label><input id="license" [(ngModel)]="correctionLicense" placeholder="DEMO-VA-1001"></div><div><label for="state">State</label><input id="state" [(ngModel)]="correctionState" maxlength="2" placeholder="VA"></div><div><label for="years">Experience claim</label><input id="years" type="number" min="0" max="60" [(ngModel)]="correctionYears"></div></div>
-          <label for="notes">Reviewer notes and evidence</label><textarea id="notes" [(ngModel)]="notes" rows="3" maxlength="2000" placeholder="Explain the correction or decision"></textarea>
-          <div class="inline"><button *ngIf="selected.status==='AWAITING_CLARIFICATION'" (click)="review('clarify')" [disabled]="busy || notes.trim().length<3">Save and resume</button><ng-container *ngIf="selected.status==='AWAITING_APPROVAL'"><button (click)="review('approve')" [disabled]="busy || notes.trim().length<3">Approve recommendation</button><button class="secondary" (click)="review('reject')" [disabled]="busy || notes.trim().length<3">Override recommendation</button></ng-container></div><small>Approval confirms the assessment recommendation. It does not automatically hire or reject a candidate.</small>
-        </section>
-        <section class="decision" *ngIf="result.decision"><h3>Recorded decision</h3><p>{{result.decision.action==='approve' ? 'Recommendation approved' : 'Recommendation overridden'}} by {{result.decision.reviewer}}</p><p>{{result.decision.notes}}</p></section>
-      </ng-container>
-      <div class="inline between"><h3>Audit trail</h3><button class="subtle" (click)="loadAudit()">Load events</button></div><div class="audit" *ngFor="let event of events"><strong>{{human(event.action)}}</strong><small>{{event.actor}} · {{event.created_at | date:'short'}}</small><pre>{{event.detail | json}}</pre></div>
-    </article>
-    <ng-template #empty><article class="panel placeholder"><div class="eyebrow">REVIEW WORKSPACE</div><h2>Every recommendation<br>needs its evidence.</h2><p>Select an assessment to inspect claims, rule results, retrieved policies and reviewer decisions.</p></article></ng-template>
+<!-- ══════════════════════════════════════════════════════════════
+     LANDING PAGE  (shown when not connected)
+═══════════════════════════════════════════════════════════════ -->
+<div class="landing" *ngIf="!connected">
+
+  <!-- ── LEFT: Hero + Illustration ─────────────────────────────── -->
+  <div class="landing-hero">
+    <div class="hero-logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="14" fill="rgba(255,255,255,0.2)"/>
+        <path d="M14 7v7l4 4" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="14" cy="14" r="5" stroke="white" stroke-width="2"/>
+      </svg>
+      CLINREADY <span>Healthcare Staffing Intelligence</span>
+    </div>
+
+    <div class="hero-headline">
+      <h1>Caring for the<br>future of health<br>with accountability.</h1>
+      <p>AI-powered candidate screening, license verification, and qualification workflows — built for speed, transparency, and trust.</p>
+    </div>
+
+    <!-- ── SVG ILLUSTRATION: Doctor + Nurse scene ──────────────── -->
+    <div class="hero-illustration">
+      <svg viewBox="0 0 520 280" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Cartoon doctors and nurses caring for the future of health">
+
+        <!-- Ground / floor -->
+        <ellipse cx="260" cy="268" rx="230" ry="12" fill="rgba(255,255,255,0.08)"/>
+
+        <!-- ── BACKGROUND: Hospital building ── -->
+        <rect x="160" y="80" width="200" height="170" rx="6" fill="rgba(255,255,255,0.07)"/>
+        <rect x="180" y="100" width="30" height="30" rx="3" fill="rgba(255,255,255,0.13)"/>
+        <rect x="225" y="100" width="30" height="30" rx="3" fill="rgba(255,255,255,0.13)"/>
+        <rect x="270" y="100" width="30" height="30" rx="3" fill="rgba(255,255,255,0.13)"/>
+        <rect x="315" y="100" width="30" height="30" rx="3" fill="rgba(255,255,255,0.13)"/>
+        <rect x="215" y="185" width="50" height="65" rx="4" fill="rgba(255,255,255,0.15)"/>
+        <!-- Cross on building -->
+        <rect x="254" y="88" width="12" height="30" rx="3" fill="rgba(255,255,255,0.35)"/>
+        <rect x="246" y="96" width="28" height="12" rx="3" fill="rgba(255,255,255,0.35)"/>
+
+        <!-- ── FIGURE 1: Female Doctor (left) ── -->
+        <!-- Lab coat body -->
+        <rect x="52" y="148" width="52" height="80" rx="14" fill="#ffffff"/>
+        <!-- Blue scrubs under coat -->
+        <rect x="62" y="158" width="32" height="65" rx="8" fill="#5b9bd5"/>
+        <!-- Lab coat lapels -->
+        <path d="M52 155 L68 175 L78 155" fill="#f0f4ff" stroke="#dde6f5" stroke-width="1"/>
+        <!-- Stethoscope -->
+        <path d="M72 170 Q85 180 85 195 Q85 208 78 208" stroke="#2d5fa6" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        <circle cx="78" cy="210" r="5" fill="#2d5fa6"/>
+        <!-- Arms -->
+        <path d="M52 165 Q38 175 36 192" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+        <path d="M104 165 Q118 180 116 200" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+        <!-- Clipboard in right hand -->
+        <rect x="108" y="194" width="22" height="28" rx="3" fill="#fff9c4" stroke="#f9a825" stroke-width="1.5"/>
+        <line x1="112" y1="202" x2="126" y2="202" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="112" y1="208" x2="126" y2="208" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="112" y1="214" x2="120" y2="214" stroke="#aaa" stroke-width="1.5"/>
+        <!-- Neck -->
+        <rect x="70" y="133" width="16" height="18" rx="8" fill="#f5c9a0"/>
+        <!-- Head -->
+        <ellipse cx="78" cy="122" rx="22" ry="24" fill="#f5c9a0"/>
+        <!-- Hair (bun) -->
+        <ellipse cx="78" cy="100" rx="20" ry="14" fill="#4a2c0a"/>
+        <ellipse cx="78" cy="97" rx="10" ry="9" fill="#5c3610"/>
+        <!-- Eyes -->
+        <ellipse cx="71" cy="120" rx="3" ry="3.5" fill="#fff"/>
+        <ellipse cx="85" cy="120" rx="3" ry="3.5" fill="#fff"/>
+        <circle cx="71.5" cy="120.5" r="2" fill="#2c1810"/>
+        <circle cx="85.5" cy="120.5" r="2" fill="#2c1810"/>
+        <!-- Smile -->
+        <path d="M71 129 Q78 135 85 129" stroke="#c97b5a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <!-- Glasses -->
+        <rect x="66" y="116" width="10" height="8" rx="4" fill="none" stroke="#2d5fa6" stroke-width="1.5"/>
+        <rect x="80" y="116" width="10" height="8" rx="4" fill="none" stroke="#2d5fa6" stroke-width="1.5"/>
+        <line x1="76" y1="120" x2="80" y2="120" stroke="#2d5fa6" stroke-width="1.5"/>
+        <!-- Name badge -->
+        <rect x="60" y="175" width="28" height="16" rx="3" fill="#e3f0ff" stroke="#2d5fa6" stroke-width="1"/>
+        <rect x="63" y="178" width="22" height="3" rx="1" fill="#2d5fa6"/>
+        <rect x="63" y="183" width="14" height="2" rx="1" fill="#90b8e0"/>
+        <!-- Legs -->
+        <rect x="62" y="224" width="14" height="44" rx="7" fill="#5b9bd5"/>
+        <rect x="80" y="224" width="14" height="44" rx="7" fill="#5b9bd5"/>
+        <!-- Shoes -->
+        <ellipse cx="69" cy="268" rx="11" ry="6" fill="#1a3a6b"/>
+        <ellipse cx="87" cy="268" rx="11" ry="6" fill="#1a3a6b"/>
+
+        <!-- ── FIGURE 2: Male Nurse (center-left) ── -->
+        <!-- Scrubs body -->
+        <rect x="175" y="148" width="50" height="80" rx="13" fill="#00b894"/>
+        <!-- Pocket -->
+        <rect x="185" y="168" width="16" height="12" rx="3" fill="#009974"/>
+        <!-- Arms -->
+        <path d="M175 162 Q160 172 158 192" stroke="#00b894" stroke-width="11" stroke-linecap="round"/>
+        <path d="M225 162 Q238 170 236 188" stroke="#00b894" stroke-width="11" stroke-linecap="round"/>
+        <!-- Tablet in left hand -->
+        <rect x="148" y="186" width="20" height="26" rx="3" fill="#1a1a2e" stroke="#555" stroke-width="1"/>
+        <rect x="150" y="189" width="16" height="19" rx="2" fill="#0a6ebd"/>
+        <rect x="152" y="192" width="8" height="2" rx="1" fill="rgba(255,255,255,0.7)"/>
+        <rect x="152" y="196" width="12" height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+        <rect x="152" y="200" width="10" height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+        <!-- Neck -->
+        <rect x="193" y="132" width="14" height="18" rx="7" fill="#d4956a"/>
+        <!-- Head -->
+        <ellipse cx="200" cy="120" rx="21" ry="23" fill="#d4956a"/>
+        <!-- Short hair -->
+        <ellipse cx="200" cy="100" rx="21" ry="12" fill="#1a0a00"/>
+        <ellipse cx="200" cy="104" rx="16" ry="9" fill="#2a1200"/>
+        <!-- Eyes -->
+        <ellipse cx="193" cy="118" rx="3" ry="3.5" fill="#fff"/>
+        <ellipse cx="207" cy="118" rx="3" ry="3.5" fill="#fff"/>
+        <circle cx="193.5" cy="118.5" r="2" fill="#1a0a00"/>
+        <circle cx="207.5" cy="118.5" r="2" fill="#1a0a00"/>
+        <!-- Eyebrows -->
+        <path d="M190 113 Q193 111 196 113" stroke="#1a0a00" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M204 113 Q207 111 210 113" stroke="#1a0a00" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <!-- Smile -->
+        <path d="M193 127 Q200 133 207 127" stroke="#b06040" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <!-- Nurse cap -->
+        <ellipse cx="200" cy="100" rx="22" ry="7" fill="#ffffff" opacity="0.9"/>
+        <rect x="196" y="95" width="8" height="2" rx="1" fill="#e74c3c"/>
+        <rect x="199" y="92" width="2" height="8" rx="1" fill="#e74c3c"/>
+        <!-- Name badge -->
+        <rect x="184" y="174" width="28" height="16" rx="3" fill="#e8fff8" stroke="#00b894" stroke-width="1"/>
+        <rect x="187" y="177" width="22" height="3" rx="1" fill="#00b894"/>
+        <rect x="187" y="182" width="14" height="2" rx="1" fill="#80dfc0"/>
+        <!-- Legs -->
+        <rect x="183" y="224" width="14" height="44" rx="7" fill="#009974"/>
+        <rect x="203" y="224" width="14" height="44" rx="7" fill="#009974"/>
+        <!-- Shoes -->
+        <ellipse cx="190" cy="268" rx="11" ry="6" fill="#005540"/>
+        <ellipse cx="210" cy="268" rx="11" ry="6" fill="#005540"/>
+
+        <!-- ── FIGURE 3: Female Nurse (center-right, taller pose) ── -->
+        <!-- Scrubs -->
+        <rect x="295" y="140" width="52" height="88" rx="14" fill="#9b59b6"/>
+        <!-- Heart on scrubs -->
+        <path d="M317 160 Q321 154 325 160 Q329 154 333 160 Q333 170 321 178 Q309 170 317 160Z" fill="#e91e63" opacity="0.7"/>
+        <!-- Arms (one raised) -->
+        <path d="M295 158 Q278 145 274 128" stroke="#9b59b6" stroke-width="11" stroke-linecap="round"/>
+        <path d="M347 158 Q362 168 365 188" stroke="#9b59b6" stroke-width="11" stroke-linecap="round"/>
+        <!-- Raised hand holding heart -->
+        <circle cx="274" cy="120" r="14" fill="#f5c9a0"/>
+        <path d="M266 118 Q270 112 274 118 Q278 112 282 118 Q282 126 274 132 Q266 126 266 118Z" fill="#e91e63"/>
+        <!-- Folder in other hand -->
+        <rect x="358" y="182" width="26" height="20" rx="3" fill="#ff9800"/>
+        <rect x="358" y="178" width="14" height="6" rx="2" fill="#ff9800"/>
+        <line x1="362" y1="188" x2="380" y2="188" stroke="#fff" stroke-width="1.5"/>
+        <line x1="362" y1="193" x2="380" y2="193" stroke="#fff" stroke-width="1.5"/>
+        <!-- Neck -->
+        <rect x="316" y="124" width="14" height="18" rx="7" fill="#f5c9a0"/>
+        <!-- Head -->
+        <ellipse cx="323" cy="112" rx="22" ry="24" fill="#f5c9a0"/>
+        <!-- Hair (ponytail) -->
+        <ellipse cx="323" cy="91" rx="22" ry="14" fill="#8B4513"/>
+        <path d="M340 95 Q355 100 352 115 Q350 122 344 118" fill="#8B4513"/>
+        <!-- Eyes -->
+        <ellipse cx="316" cy="110" rx="3" ry="3.5" fill="#fff"/>
+        <ellipse cx="330" cy="110" rx="3" ry="3.5" fill="#fff"/>
+        <circle cx="316.5" cy="110.5" r="2" fill="#2c1810"/>
+        <circle cx="330.5" cy="110.5" r="2" fill="#2c1810"/>
+        <!-- Lashes -->
+        <line x1="314" y1="107" x2="312" y2="104" stroke="#2c1810" stroke-width="1"/>
+        <line x1="316" y1="106.5" x2="316" y2="103" stroke="#2c1810" stroke-width="1"/>
+        <line x1="318" y1="107" x2="320" y2="104" stroke="#2c1810" stroke-width="1"/>
+        <line x1="328" y1="107" x2="326" y2="104" stroke="#2c1810" stroke-width="1"/>
+        <line x1="330" y1="106.5" x2="330" y2="103" stroke="#2c1810" stroke-width="1"/>
+        <line x1="332" y1="107" x2="334" y2="104" stroke="#2c1810" stroke-width="1"/>
+        <!-- Smile -->
+        <path d="M316 120 Q323 127 330 120" stroke="#c97b5a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <!-- Cheeks -->
+        <ellipse cx="311" cy="116" rx="5" ry="3" fill="#ffb3a7" opacity="0.5"/>
+        <ellipse cx="335" cy="116" rx="5" ry="3" fill="#ffb3a7" opacity="0.5"/>
+        <!-- Nurse cap -->
+        <ellipse cx="323" cy="91" rx="23" ry="7" fill="white" opacity="0.9"/>
+        <rect x="319" y="86" width="8" height="2" rx="1" fill="#e74c3c"/>
+        <rect x="322" y="83" width="2" height="8" rx="1" fill="#e74c3c"/>
+        <!-- Name badge -->
+        <rect x="304" y="168" width="28" height="16" rx="3" fill="#f5eeff" stroke="#9b59b6" stroke-width="1"/>
+        <rect x="307" y="171" width="22" height="3" rx="1" fill="#9b59b6"/>
+        <rect x="307" y="176" width="14" height="2" rx="1" fill="#c89fe0"/>
+        <!-- Legs -->
+        <rect x="303" y="224" width="14" height="44" rx="7" fill="#7d3c98"/>
+        <rect x="323" y="224" width="14" height="44" rx="7" fill="#7d3c98"/>
+        <!-- Shoes -->
+        <ellipse cx="310" cy="268" rx="11" ry="6" fill="#4a235a"/>
+        <ellipse cx="330" cy="268" rx="11" ry="6" fill="#4a235a"/>
+
+        <!-- ── FIGURE 4: Senior Male Doctor (right) ── -->
+        <!-- White coat -->
+        <rect x="400" y="148" width="54" height="80" rx="14" fill="#ffffff"/>
+        <!-- Dark suit underneath -->
+        <rect x="410" y="158" width="34" height="65" rx="8" fill="#2c3e50"/>
+        <!-- Tie -->
+        <path d="M425 162 L427 195 L422 200 L427 195 L429 162Z" fill="#e74c3c"/>
+        <!-- Coat lapels -->
+        <path d="M400 155 L416 178 L427 155" fill="#f8fbff" stroke="#e0e8f5" stroke-width="1"/>
+        <!-- Stethoscope -->
+        <path d="M422 172 Q435 182 435 197 Q435 210 428 210" stroke="#1a3a6b" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        <circle cx="428" cy="212" r="5" fill="#1a3a6b"/>
+        <!-- Arms -->
+        <path d="M400 165 Q384 175 382 195" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+        <path d="M454 165 Q468 172 466 192" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+        <!-- Paper chart in hand -->
+        <rect x="458" y="186" width="22" height="28" rx="3" fill="#fff9c4" stroke="#f9a825" stroke-width="1.5"/>
+        <line x1="462" y1="194" x2="476" y2="194" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="462" y1="200" x2="476" y2="200" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="462" y1="206" x2="470" y2="206" stroke="#aaa" stroke-width="1.5"/>
+        <!-- Neck -->
+        <rect x="420" y="132" width="15" height="18" rx="7" fill="#e8b896"/>
+        <!-- Head -->
+        <ellipse cx="427" cy="120" rx="22" ry="24" fill="#e8b896"/>
+        <!-- Silver/grey hair -->
+        <ellipse cx="427" cy="99" rx="22" ry="13" fill="#9e9e9e"/>
+        <ellipse cx="427" cy="103" rx="17" ry="9" fill="#bdbdbd"/>
+        <!-- Temples grey -->
+        <ellipse cx="407" cy="112" rx="5" ry="8" fill="#bdbdbd"/>
+        <ellipse cx="447" cy="112" rx="5" ry="8" fill="#bdbdbd"/>
+        <!-- Eyes -->
+        <ellipse cx="420" cy="118" rx="3" ry="3.5" fill="#fff"/>
+        <ellipse cx="434" cy="118" rx="3" ry="3.5" fill="#fff"/>
+        <circle cx="420.5" cy="118.5" r="2" fill="#2c1810"/>
+        <circle cx="434.5" cy="118.5" r="2" fill="#2c1810"/>
+        <!-- Glasses (round) -->
+        <circle cx="420" cy="118" r="6" fill="none" stroke="#555" stroke-width="1.5"/>
+        <circle cx="434" cy="118" r="6" fill="none" stroke="#555" stroke-width="1.5"/>
+        <line x1="426" y1="118" x2="428" y2="118" stroke="#555" stroke-width="1.5"/>
+        <line x1="414" y1="118" x2="410" y2="116" stroke="#555" stroke-width="1.5"/>
+        <line x1="440" y1="118" x2="444" y2="116" stroke="#555" stroke-width="1.5"/>
+        <!-- Smile + slight lines (age) -->
+        <path d="M420 128 Q427 135 434 128" stroke="#b07050" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M413 122 Q411 118 413 115" stroke="#d0a080" stroke-width="1" fill="none"/>
+        <path d="M441 122 Q443 118 441 115" stroke="#d0a080" stroke-width="1" fill="none"/>
+        <!-- Name badge -->
+        <rect x="408" y="175" width="30" height="16" rx="3" fill="#e3f0ff" stroke="#1a3a6b" stroke-width="1"/>
+        <rect x="411" y="178" width="24" height="3" rx="1" fill="#1a3a6b"/>
+        <rect x="411" y="183" width="16" height="2" rx="1" fill="#90b8e0"/>
+        <!-- Legs -->
+        <rect x="410" y="224" width="14" height="44" rx="7" fill="#2c3e50"/>
+        <rect x="430" y="224" width="14" height="44" rx="7" fill="#2c3e50"/>
+        <!-- Shoes -->
+        <ellipse cx="417" cy="268" rx="11" ry="6" fill="#1a2530"/>
+        <ellipse cx="437" cy="268" rx="11" ry="6" fill="#1a2530"/>
+
+        <!-- ── Floating elements ── -->
+        <!-- Heartbeat line (ECG) -->
+        <path d="M30 50 L55 50 L62 32 L70 68 L78 32 L86 50 L100 50"
+              stroke="rgba(255,255,255,0.4)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Shield with checkmark (accountability) -->
+        <path d="M460 30 Q460 20 470 18 Q480 20 480 30 Q480 42 470 48 Q460 42 460 30Z"
+              fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+        <path d="M465 31 L469 35 L477 25" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <!-- Star sparkles -->
+        <circle cx="148" cy="58" r="2.5" fill="rgba(255,255,255,0.5)"/>
+        <circle cx="380" cy="45" r="2" fill="rgba(255,255,255,0.4)"/>
+        <circle cx="490" cy="72" r="1.8" fill="rgba(255,255,255,0.3)"/>
+        <circle cx="42" cy="88" r="1.5" fill="rgba(255,255,255,0.3)"/>
+        <!-- DNA helix hint -->
+        <path d="M500 30 Q510 40 500 50 Q510 60 500 70" stroke="rgba(255,255,255,0.25)" stroke-width="2" fill="none"/>
+        <path d="M512 30 Q502 40 512 50 Q502 60 512 70" stroke="rgba(255,255,255,0.25)" stroke-width="2" fill="none"/>
+        <line x1="500" y1="40" x2="512" y2="40" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+        <line x1="500" y1="50" x2="512" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+        <line x1="500" y1="60" x2="512" y2="60" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+        <!-- AI circuit nodes -->
+        <circle cx="120" cy="42" r="4" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="140" cy="28" r="3" fill="rgba(255,255,255,0.15)"/>
+        <circle cx="108" cy="26" r="3" fill="rgba(255,255,255,0.15)"/>
+        <line x1="120" y1="42" x2="140" y2="28" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+        <line x1="120" y1="42" x2="108" y2="26" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-stat"><strong>94%</strong><span>Match accuracy</span></div>
+      <div class="hero-stat"><strong>3×</strong><span>Faster screening</span></div>
+      <div class="hero-stat"><strong>100%</strong><span>Audit-traced</span></div>
+    </div>
+  </div><!-- end landing-hero -->
+
+  <!-- ── RIGHT: Auth forms ──────────────────────────────────────── -->
+  <div class="landing-form">
+    <div class="auth-box">
+
+      <!-- ── TAB SWITCHER ── -->
+      <div class="auth-tabs">
+        <button class="auth-tab" [class.active]="authScreen==='login'" (click)="authScreen='login'; error=''">
+          Sign in
+        </button>
+        <button class="auth-tab" [class.active]="authScreen==='signup'" (click)="authScreen='signup'; error=''">
+          Create account
+        </button>
+      </div>
+
+      <!-- ════════ SIGN IN FORM ════════ -->
+      <div *ngIf="authScreen==='login'">
+        <h2 class="auth-title">Welcome back 👋</h2>
+        <p class="auth-sub">Sign in to your ClinReady workspace.</p>
+
+        <!-- Role selector -->
+        <div class="role-pills">
+          <button class="role-pill" [class.active]="loginRole==='candidate'" (click)="loginRole='candidate'; error=''">
+            <span class="role-pill-icon">🩺</span>
+            <span>Healthcare<br>Professional</span>
+          </button>
+          <button class="role-pill" [class.active]="loginRole==='reviewer'" (click)="loginRole='reviewer'; error=''">
+            <span class="role-pill-icon">🏥</span>
+            <span>Hiring<br>Reviewer</span>
+          </button>
+        </div>
+
+        <label for="loginUser">Username</label>
+        <div class="input-icon-wrap">
+          <span class="input-icon">👤</span>
+          <input id="loginUser" type="text" [(ngModel)]="loginUsername"
+                 [placeholder]="loginRole==='reviewer' ? 'reviewer' : 'nurse.sarah'"
+                 autocomplete="username">
+        </div>
+
+        <label for="loginPass">Password</label>
+        <div class="input-icon-wrap">
+          <span class="input-icon">🔒</span>
+          <input id="loginPass" type="password" [(ngModel)]="loginPassword"
+                 [placeholder]="loginRole==='reviewer' ? 'Review@123' : 'Nurse@123'"
+                 autocomplete="current-password">
+        </div>
+
+        <p class="error-msg" role="alert" *ngIf="error">{{ error }}</p>
+
+        <button class="wide" (click)="login()" [disabled]="connecting">
+          {{ connecting ? '⏳ Signing in…' : 'Sign in →' }}
+        </button>
+
+        <!-- Demo hint box -->
+        <div class="demo-hint">
+          <div class="demo-hint-title">🔑 Demo credentials</div>
+          <div class="demo-hint-row">
+            <span class="demo-hint-role reviewer-tag">Reviewer</span>
+            <code>reviewer</code> / <code>Review&#64;123</code>
+          </div>
+          <div class="demo-hint-row">
+            <span class="demo-hint-role candidate-tag">Candidate</span>
+            <code>nurse.sarah</code> / <code>Nurse&#64;123</code>
+          </div>
+        </div>
+
+        <p class="auth-switch-link">
+          New to ClinReady?
+          <button class="link-btn" (click)="authScreen='signup'; error=''">Create a free account</button>
+        </p>
+      </div>
+
+      <!-- ════════ SIGN UP FORM ════════ -->
+      <div *ngIf="authScreen==='signup'">
+        <h2 class="auth-title">Join ClinReady ✨</h2>
+        <p class="auth-sub">Create your account in seconds.</p>
+
+        <!-- Role selector -->
+        <div class="role-pills">
+          <button class="role-pill" [class.active]="signupRole==='candidate'" (click)="signupRole='candidate'; signupError=''">
+            <span class="role-pill-icon">🩺</span>
+            <span>Healthcare<br>Professional</span>
+          </button>
+          <button class="role-pill" [class.active]="signupRole==='reviewer'" (click)="signupRole='reviewer'; signupError=''">
+            <span class="role-pill-icon">🏥</span>
+            <span>Hiring<br>Reviewer</span>
+          </button>
+        </div>
+
+        <div class="form-grid-2">
+          <div>
+            <label for="suFirst">First name</label>
+            <input id="suFirst" [(ngModel)]="signupFirstName" placeholder="Sarah">
+          </div>
+          <div>
+            <label for="suLast">Last name</label>
+            <input id="suLast" [(ngModel)]="signupLastName" placeholder="Johnson">
+          </div>
+        </div>
+
+        <label for="suUser">Username</label>
+        <div class="input-icon-wrap">
+          <span class="input-icon">👤</span>
+          <input id="suUser" [(ngModel)]="signupUsername" placeholder="sarah.rn" autocomplete="username">
+        </div>
+
+        <label for="suPass">Password</label>
+        <div class="input-icon-wrap">
+          <span class="input-icon">🔒</span>
+          <input id="suPass" type="password" [(ngModel)]="signupPassword" placeholder="Min 6 characters" autocomplete="new-password">
+        </div>
+
+        <label for="suConfirm">Confirm password</label>
+        <div class="input-icon-wrap">
+          <span class="input-icon">🔒</span>
+          <input id="suConfirm" type="password" [(ngModel)]="signupConfirm" placeholder="Repeat password" autocomplete="new-password">
+        </div>
+
+        <p class="error-msg"   role="alert"  *ngIf="signupError">{{ signupError }}</p>
+        <p class="success-msg" role="status" *ngIf="signupSuccess">✅ {{ signupSuccess }}</p>
+
+        <button class="wide" (click)="register()" [disabled]="!!signupSuccess">
+          Create account →
+        </button>
+
+        <p class="auth-switch-link">
+          Already have an account?
+          <button class="link-btn" (click)="authScreen='login'; signupError=''; signupSuccess=''">Sign in</button>
+        </p>
+
+        <small style="text-align:center;margin-top:12px">
+          Synthetic data only · No real credentials stored · Demo accounts persist in memory only
+        </small>
+      </div>
+
+    </div><!-- end auth-box -->
+  </div><!-- end landing-form -->
+
+</div><!-- end landing -->
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     APP SHELL  (shown when connected)
+═══════════════════════════════════════════════════════════════ -->
+<div class="app-shell" *ngIf="connected">
+
+  <!-- ── Top navigation ──────────────────────────────────────── -->
+  <nav class="topnav">
+    <div class="nav-brand">
+      <div class="nav-brand-dot"></div>
+      CLINREADY
+    </div>
+    <div class="nav-links">
+      <button class="nav-link" [class.active]="view==='dashboard'" (click)="view='dashboard'">
+        📊 Dashboard
+      </button>
+      <button class="nav-link" [class.active]="view==='profile'" (click)="view='profile'">
+        👤 My Profile
+      </button>
+      <button class="nav-link" [class.active]="view==='jobs'" (click)="view='jobs'">
+        🔍 Job Match
+      </button>
+      <button class="nav-link" [class.active]="view==='assessments'" (click)="view='assessments'">
+        📋 Assessments
+        <span class="badge processing" *ngIf="pendingCount > 0" style="padding:2px 7px;font-size:10px">{{pendingCount}}</span>
+      </button>
+    </div>
+    <div class="nav-right">
+      <small style="color:var(--text3)">Synthetic data · Simulated registry</small>
+      <div class="avatar" [title]="loginUsername || 'Signed in'">{{ initials }}</div>
+      <span style="font-size:13px;font-weight:600;color:var(--text2)">{{ loginUsername }}</span>
+      <button class="ghost" (click)="disconnect()">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="page-content">
+
+    <!-- ── Step progress bar (shown on profile + jobs + assessment) -->
+    <div class="step-bar" *ngIf="view !== 'dashboard'">
+      <div class="step-item">
+        <div class="step-circle" [class.done]="profileComplete" [class.active]="view==='profile'">
+          {{ profileComplete ? '✓' : '1' }}
+        </div>
+        <div class="step-label">
+          <strong>Profile</strong>
+          <span>{{ profileComplete ? 'Complete' : 'Build your profile' }}</span>
+        </div>
+      </div>
+      <div class="step-line" [class.done]="profileComplete"></div>
+      <div class="step-item">
+        <div class="step-circle" [class.done]="resumeUploaded" [class.active]="view==='jobs'">
+          {{ resumeUploaded ? '✓' : '2' }}
+        </div>
+        <div class="step-label">
+          <strong>Job Match</strong>
+          <span>{{ resumeUploaded ? 'Resume scored' : 'Upload &amp; match' }}</span>
+        </div>
+      </div>
+      <div class="step-line" [class.done]="assessments.length > 0"></div>
+      <div class="step-item">
+        <div class="step-circle" [class.done]="assessments.length > 0" [class.active]="view==='assessments'">
+          {{ assessments.length > 0 ? '✓' : '3' }}
+        </div>
+        <div class="step-label">
+          <strong>Assessment</strong>
+          <span>{{ assessments.length > 0 ? assessments.length + ' submitted' : 'Technical screening' }}</span>
+        </div>
+      </div>
+      <div class="step-line"></div>
+      <div class="step-item" style="flex:0">
+        <div class="step-circle" [class.done]="hasCompletedAssessment" [class.active]="hasCompletedAssessment">
+          {{ hasCompletedAssessment ? '✓' : '4' }}
+        </div>
+        <div class="step-label">
+          <strong>Decision</strong>
+          <span>{{ hasCompletedAssessment ? 'Reviewed' : 'Awaiting review' }}</span>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════
+         VIEW: DASHBOARD
+    ════════════════════════════════════════════════════════════ -->
+    <div *ngIf="view==='dashboard'">
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon blue">📋</div>
+          <div>
+            <div class="stat-num">{{ assessments.length }}</div>
+            <div class="stat-lbl">Total Assessments</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon gold">⏳</div>
+          <div>
+            <div class="stat-num">{{ pendingCount }}</div>
+            <div class="stat-lbl">Awaiting Review</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">✅</div>
+          <div>
+            <div class="stat-num">{{ completedCount }}</div>
+            <div class="stat-lbl">Completed</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">🏅</div>
+          <div>
+            <div class="stat-num">{{ bestMatch }}%</div>
+            <div class="stat-lbl">Best Match Score</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Quick actions</h2>
+        </div>
+        <div class="flex wrap" style="gap:12px">
+          <button (click)="view='profile'">👤 Complete your profile</button>
+          <button class="secondary" (click)="view='jobs'">🔍 Browse &amp; match jobs</button>
+          <button class="secondary" (click)="view='assessments'">📋 View assessments</button>
+        </div>
+      </div>
+
+      <!-- Recent assessments -->
+      <div class="card" *ngIf="assessments.length > 0">
+        <div class="card-header">
+          <h2>Recent assessments</h2>
+          <button class="ghost" (click)="refresh()">↻ Refresh</button>
+        </div>
+        <div *ngFor="let row of assessments.slice(0,5)">
+          <div class="assessment-list-item" (click)="selectAndGo(row)">
+            <div class="assessment-list-icon">🩺</div>
+            <div class="assessment-list-meta">
+              <strong>{{ jobLabel(row.job_id) }}</strong>
+              <small>ID {{ row.id.slice(0,8) }} · {{ row.created_at | date:'mediumDate' }}</small>
+            </div>
+            <span class="badge" [class]="badgeClass(row.status)">{{ human(row.status) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty dashboard -->
+      <div class="card" *ngIf="assessments.length === 0">
+        <div class="empty-state">
+          <div class="empty-icon">🏥</div>
+          <h3>Get started with ClinReady</h3>
+          <p>Build your profile, upload your resume, and match with open nursing roles.</p>
+          <button (click)="view='profile'" style="margin-top:12px">Build my profile →</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════
+         VIEW: PROFILE
+    ════════════════════════════════════════════════════════════ -->
+    <div *ngIf="view==='profile'">
+      <div class="profile-grid">
+
+        <!-- Sidebar -->
+        <div class="profile-sidebar">
+          <div class="profile-avatar-box">
+            <div class="profile-avatar-large">{{ initials }}</div>
+            <div class="profile-name">{{ profileName || 'Your Name' }}</div>
+            <div class="profile-role-tag">{{ profileSpecialty || 'Healthcare Professional' }}</div>
+            <div class="completion-ring">
+              <div class="completion-label">Profile {{ profilePct }}% complete</div>
+              <div class="progress-bar"><div class="progress-fill" [style.width]="profilePct + '%'"></div></div>
+            </div>
+            <div class="sidebar-links">
+              <button class="sidebar-link" [class.active]="profileTab==='basic'" (click)="profileTab='basic'">👤 Basic info</button>
+              <button class="sidebar-link" [class.active]="profileTab==='credentials'" (click)="profileTab='credentials'">🏅 Credentials</button>
+              <button class="sidebar-link" [class.active]="profileTab==='resume'" (click)="profileTab='resume'">📄 Resume</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main form -->
+        <div>
+
+          <!-- Tab: Basic info -->
+          <div class="card" *ngIf="profileTab==='basic'">
+            <div class="card-header">
+              <h2>Basic information</h2>
+              <span class="badge pass" *ngIf="profileComplete">✓ Saved</span>
+            </div>
+            <div class="form-grid-2">
+              <div>
+                <label for="firstName">First name</label>
+                <input id="firstName" [(ngModel)]="firstName" placeholder="Sarah">
+              </div>
+              <div>
+                <label for="lastName">Last name</label>
+                <input id="lastName" [(ngModel)]="lastName" placeholder="Johnson">
+              </div>
+            </div>
+            <div class="form-grid-2">
+              <div>
+                <label for="email">Email address</label>
+                <input id="email" type="email" [(ngModel)]="profileEmail" placeholder="sarah.j@hospital.org">
+              </div>
+              <div>
+                <label for="phone">Phone number</label>
+                <input id="phone" type="tel" [(ngModel)]="profilePhone" placeholder="+1 (555) 000-0000">
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div>
+                <label for="specialty">Specialty</label>
+                <select id="specialty" [(ngModel)]="profileSpecialty">
+                  <option value="">Select specialty</option>
+                  <option>ICU / Critical Care RN</option>
+                  <option>Emergency RN</option>
+                  <option>General RN</option>
+                  <option>Pediatric RN</option>
+                  <option>OR / Surgical RN</option>
+                  <option>Travel Nurse</option>
+                </select>
+              </div>
+              <div>
+                <label for="expYears">Years of experience</label>
+                <input id="expYears" type="number" min="0" max="60" [(ngModel)]="profileYears" placeholder="5">
+              </div>
+              <div>
+                <label for="state">Licensed state</label>
+                <input id="state" [(ngModel)]="profileState" maxlength="2" placeholder="VA" style="text-transform:uppercase">
+              </div>
+            </div>
+            <button class="wide" (click)="saveProfile()">Save basic info →</button>
+          </div>
+
+          <!-- Tab: Credentials -->
+          <div class="card" *ngIf="profileTab==='credentials'">
+            <div class="card-header">
+              <h2>License &amp; credentials</h2>
+              <span class="mock-badge">🔬 Registry: Simulated</span>
+            </div>
+
+            <div class="license-card">
+              <div class="license-icon">🏅</div>
+              <div class="license-meta">
+                <strong>RN License</strong>
+                <span>Active nursing license — verified against simulated registry</span>
+              </div>
+              <div class="license-status">
+                <span class="badge" [class]="licenseVerified ? 'pass' : 'unknown'">
+                  {{ licenseVerified ? '✓ Verified' : '⏳ Pending' }}
+                </span>
+                <span class="mock-badge">Mock API</span>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div>
+                <label for="licNum">License number</label>
+                <input id="licNum" [(ngModel)]="profileLicense" placeholder="DEMO-VA-1001" style="text-transform:uppercase">
+              </div>
+              <div>
+                <label for="licState">Issuing state</label>
+                <input id="licState" [(ngModel)]="profileLicState" maxlength="2" placeholder="VA" style="text-transform:uppercase">
+              </div>
+            </div>
+            <small>⚠️ License verification uses a simulated registry. In production, this will call a real state licensing board API.</small>
+
+            <div class="form-grid-2" style="margin-top:16px">
+              <div>
+                <label for="cert1">BLS Certification</label>
+                <select id="cert1" [(ngModel)]="certBLS">
+                  <option value="">Not provided</option>
+                  <option>Current (within 2 years)</option>
+                  <option>Expired</option>
+                </select>
+              </div>
+              <div>
+                <label for="cert2">ACLS Certification</label>
+                <select id="cert2" [(ngModel)]="certACLS">
+                  <option value="">Not provided</option>
+                  <option>Current (within 2 years)</option>
+                  <option>Expired</option>
+                </select>
+              </div>
+            </div>
+            <button class="wide" (click)="saveCredentials()">Save credentials &amp; verify →</button>
+          </div>
+
+          <!-- Tab: Resume -->
+          <div class="card" *ngIf="profileTab==='resume'">
+            <div class="card-header">
+              <h2>Resume upload</h2>
+              <span class="badge pass" *ngIf="resumeUploaded">✓ Uploaded</span>
+            </div>
+
+            <div class="upload-zone" [class.has-file]="resumeUploaded" (click)="triggerResumeUpload()">
+              <div class="upload-icon">{{ resumeUploaded ? '✅' : '📄' }}</div>
+              <h3>{{ resumeUploaded ? 'Resume ready' : 'Drop your resume here' }}</h3>
+              <p>{{ resumeUploaded ? 'Resume text loaded. You can edit below or re-upload.' : 'PDF, DOCX, or paste plain text below · Max 30,000 characters' }}</p>
+              <button class="secondary" style="margin-top:10px" (click)="triggerResumeUpload(); $event.stopPropagation()">
+                {{ resumeUploaded ? '↺ Replace file' : '⬆ Choose file' }}
+              </button>
+            </div>
+
+            <label for="resumeText">Or paste resume text directly</label>
+            <textarea id="resumeText" [(ngModel)]="resume" rows="12" maxlength="30000"
+                      placeholder="Experience: 5 years&#10;License: DEMO-VA-1001&#10;State: VA&#10;&#10;Work History:&#10;..."></textarea>
+            <div class="flex between" style="margin-top:8px">
+              <small>{{ resume.length }} / 30,000 characters</small>
+              <div class="flex" style="gap:8px">
+                <button class="secondary" *ngFor="let sample of samples; let i=index" (click)="loadSample(i.toString())" style="font-size:11px;padding:7px 12px">
+                  Load: {{ sample.label }}
+                </button>
+              </div>
+            </div>
+            <button class="wide" (click)="saveResume()" [disabled]="resume.length < 10">Save &amp; analyse resume →</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════
+         VIEW: JOB MATCH
+    ════════════════════════════════════════════════════════════ -->
+    <div *ngIf="view==='jobs'">
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="flex between">
+          <div>
+            <h2 style="margin-bottom:4px">Job matching</h2>
+            <p style="margin:0">Your resume is compared against each role's requirements. Select a job to submit for assessment.</p>
+          </div>
+          <span class="badge pass" *ngIf="resumeUploaded">Resume loaded ✓</span>
+        </div>
+        <div *ngIf="!resumeUploaded" class="error-msg" style="margin-top:14px">
+          ⚠️ Upload your resume first on the Profile tab to see match scores.
+        </div>
+      </div>
+
+      <!-- Job cards grid -->
+      <div class="jobs-grid">
+        <div class="job-card" *ngFor="let job of jobs"
+             [class.selected]="jobId === job.id"
+             (click)="jobId = job.id">
+          <div class="job-card-header">
+            <div class="flex" style="gap:12px; align-items:flex-start; flex:1">
+              <div class="job-icon">🏥</div>
+              <div>
+                <div class="job-title">{{ job.title }}</div>
+                <div class="job-org">ClinReady Demo Hospital · Virginia</div>
+              </div>
+            </div>
+            <!-- Match score ring -->
+            <div *ngIf="resumeUploaded">
+              <div class="score-ring" [class]="scoreClass(matchScore(job))"
+                   [style]="'--pct:' + (matchScore(job) * 3.6) + 'deg'">
+                <div class="score-ring-inner">{{ matchScore(job) }}%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="job-tags">
+            <span class="tag blue">RN Required</span>
+            <span class="tag green">{{ job.minimum_years }}+ yrs exp</span>
+            <span class="tag gold">{{ job.license_state }} License</span>
+            <span class="tag" *ngIf="jobId === job.id">✓ Selected</span>
+          </div>
+
+          <!-- Match breakdown (visible when selected and resume loaded) -->
+          <div class="match-detail-panel" *ngIf="jobId === job.id && resumeUploaded">
+            <div class="flex between"><strong style="font-size:13px">Match breakdown</strong>
+              <span class="badge" [class]="scoreClass(matchScore(job))">{{ matchScore(job) }}% match</span>
+            </div>
+            <div class="match-breakdown">
+              <div class="match-row">
+                <div class="match-row-header"><span>Experience</span><span>{{ expScore(job) }}%</span></div>
+                <div class="match-bar"><div class="match-fill" [class]="scoreClass(expScore(job))" [style.width]="expScore(job)+'%'"></div></div>
+              </div>
+              <div class="match-row">
+                <div class="match-row-header"><span>License state</span><span>{{ stateScore(job) }}%</span></div>
+                <div class="match-bar"><div class="match-fill" [class]="scoreClass(stateScore(job))" [style.width]="stateScore(job)+'%'"></div></div>
+              </div>
+              <div class="match-row">
+                <div class="match-row-header"><span>License number</span><span>{{ licScore() }}%</span></div>
+                <div class="match-bar"><div class="match-fill" [class]="scoreClass(licScore())" [style.width]="licScore()+'%'"></div></div>
+              </div>
+              <div class="match-row">
+                <div class="match-row-header"><span>Resume completeness</span><span>{{ resumeScore() }}%</span></div>
+                <div class="match-bar"><div class="match-fill" [class]="scoreClass(resumeScore())" [style.width]="resumeScore()+'%'"></div></div>
+              </div>
+            </div>
+            <button class="wide" (click)="submitAssessment()" [disabled]="busy || resume.length < 10" style="margin-top:16px">
+              {{ busy ? '⏳ Submitting…' : '🚀 Submit for technical assessment' }}
+            </button>
+            <small style="text-align:center;margin-top:8px">Assessment is manual review by a qualified hiring reviewer.</small>
+          </div>
+        </div>
+      </div>
+
+      <p class="error-msg" role="alert" *ngIf="error">{{ error }}</p>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════════════
+         VIEW: ASSESSMENTS
+    ════════════════════════════════════════════════════════════ -->
+    <div *ngIf="view==='assessments'">
+
+      <div class="assessment-layout">
+
+        <!-- Left: list panel -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Assessments</h2>
+              <button class="ghost" (click)="refresh()">↻</button>
+            </div>
+
+            <div *ngIf="!assessments.length" class="empty-state" style="min-height:180px">
+              <div class="empty-icon">📋</div>
+              <h3>No assessments yet</h3>
+              <p>Submit from the Job Match tab to begin.</p>
+            </div>
+
+            <button class="assessment-list-item" *ngFor="let row of assessments"
+                    (click)="select(row)" [class.active]="selected?.id === row.id">
+              <div class="assessment-list-icon">🩺</div>
+              <div class="assessment-list-meta">
+                <strong>{{ jobLabel(row.job_id) }}</strong>
+                <small>{{ row.id.slice(0,8) }} · {{ row.created_at | date:'shortDate' }}</small>
+              </div>
+              <span class="badge" [class]="badgeClass(row.status)">{{ human(row.status) }}</span>
+            </button>
+
+            <!-- Submit new -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+              <label for="jobSel">Submit new assessment</label>
+              <select id="jobSel" [(ngModel)]="jobId">
+                <option *ngFor="let job of jobs" [value]="job.id">{{ job.title }}</option>
+              </select>
+              <button class="wide" (click)="submitAssessment()" [disabled]="busy || resume.length < 10" style="margin-top:12px">
+                {{ busy ? '⏳ Submitting…' : '+ New assessment' }}
+              </button>
+              <small *ngIf="resume.length < 10">Add resume text in Profile → Resume first.</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: detail panel -->
+        <div>
+          <p class="error-msg" role="alert" *ngIf="error">{{ error }}</p>
+
+          <!-- Empty state -->
+          <div class="card" *ngIf="!selected">
+            <div class="empty-state">
+              <div class="empty-icon">🔎</div>
+              <h3>Select an assessment</h3>
+              <p>Click any assessment on the left to inspect evidence, rule results, license status and reviewer decisions.</p>
+            </div>
+          </div>
+
+          <!-- Assessment detail -->
+          <ng-container *ngIf="selected">
+
+            <!-- Header -->
+            <div class="card">
+              <div class="flex between" style="flex-wrap:wrap;gap:12px">
+                <div>
+                  <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:var(--text3);margin-bottom:6px">ASSESSMENT {{ selected.id.slice(0,8).toUpperCase() }}</div>
+                  <h2 style="margin-bottom:4px">{{ jobLabel(selected.job_id) }}</h2>
+                  <small>Submitted {{ selected.created_at | date:'medium' }} · {{ selected.attempts }} attempt(s) · v{{ selected.version }}</small>
+                </div>
+                <span class="badge" [class]="badgeClass(selected.status)" style="font-size:13px;padding:8px 16px">
+                  {{ human(selected.status) }}
+                </span>
+              </div>
+
+              <p class="muted" style="font-size:13px;margin-top:12px"
+                 *ngIf="selected.status==='QUEUED' || selected.status==='PROCESSING'">
+                ⏳ The AI worker is processing this assessment. This page refreshes automatically every 2s.
+              </p>
+            </div>
+
+            <ng-container *ngIf="selected.result as result">
+
+              <!-- Recommendation banner -->
+              <div class="rec-banner" *ngIf="result.summary"
+                   [class.met]="result.summary.recommendation==='REQUIREMENTS_MET'"
+                   [class.not-met]="result.summary.recommendation==='REQUIREMENTS_NOT_MET'"
+                   [class.pending]="result.summary.recommendation==='VERIFICATION_PENDING'">
+                <div class="rec-icon">
+                  {{ result.summary.recommendation==='REQUIREMENTS_MET' ? '✅' :
+                     result.summary.recommendation==='REQUIREMENTS_NOT_MET' ? '❌' : '⚠️' }}
+                </div>
+                <div class="rec-body">
+                  <strong>{{ human(result.summary.recommendation) }}</strong>
+                  <p>{{ result.summary.text }}</p>
+                </div>
+              </div>
+
+              <!-- License verification card -->
+              <div class="card" *ngIf="result.registry_evidence as reg">
+                <h3 style="margin-top:0">🏅 License verification</h3>
+                <div class="license-card">
+                  <div class="license-icon">📋</div>
+                  <div class="license-meta">
+                    <strong>{{ reg.license_number }} · {{ reg.state }}</strong>
+                    <span>Credential: {{ reg.credential }} · Expires: {{ reg.expires_on }}</span>
+                  </div>
+                  <div class="license-status">
+                    <span class="badge" [class]="reg.status==='ACTIVE' ? 'pass' : 'fail'">
+                      {{ reg.status === 'ACTIVE' ? '✓ Active' : '✗ Inactive' }}
+                    </span>
+                    <span class="mock-badge">{{ reg.source }}</span>
+                  </div>
+                </div>
+                <small>⚠️ Simulated registry only. Production will verify against real state licensing board APIs.</small>
+              </div>
+
+              <!-- Qualification rules -->
+              <div class="card">
+                <h3 style="margin-top:0">📐 Qualification checks</h3>
+                <div class="rule-row" *ngFor="let rule of result.rules">
+                  <div class="rule-icon" [class]="rule.status.toLowerCase()">
+                    {{ rule.status==='PASS' ? '✓' : rule.status==='FAIL' ? '✗' : '?' }}
+                  </div>
+                  <div style="flex:1">
+                    <div class="flex between">
+                      <strong style="font-size:14px;text-transform:capitalize">{{ rule.id }}</strong>
+                      <span class="badge" [class]="rule.status.toLowerCase()">{{ rule.status }}</span>
+                    </div>
+                    <p>{{ rule.reason }}</p>
+                    <small>Source: {{ rule.source }}</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Extracted claims -->
+              <div class="card" *ngIf="result.candidate as cand">
+                <h3 style="margin-top:0">🗂️ Extracted candidate claims</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:14px;background:var(--bg);border-radius:10px;margin-bottom:16px">
+                  <div>
+                    <small>Experience claim</small>
+                    <strong style="display:block;font-size:20px;color:var(--text)">{{ cand.years_experience ?? '—' }} <span style="font-size:13px;font-weight:400">years</span></strong>
+                  </div>
+                  <div>
+                    <small>License number</small>
+                    <strong style="display:block;font-size:15px;color:var(--text)">{{ cand.license_number || '—' }}</strong>
+                  </div>
+                  <div>
+                    <small>License state</small>
+                    <strong style="display:block;font-size:20px;color:var(--text)">{{ cand.license_state || '—' }}</strong>
+                  </div>
+                </div>
+                <div *ngFor="let entry of cand.evidence | keyvalue" style="margin-bottom:12px">
+                  <strong style="font-size:12px;text-transform:capitalize;color:var(--text2)">{{ human(entry.key) }}</strong>
+                  <blockquote>{{ entry.value.quote }}</blockquote>
+                  <small>Source: {{ entry.value.source_id }}</small>
+                </div>
+              </div>
+
+              <!-- Retrieved policies -->
+              <div class="card" *ngIf="result.policies?.length">
+                <h3 style="margin-top:0">📜 Policy evidence used</h3>
+                <details *ngFor="let policy of result.policies">
+                  <summary>{{ policy.id }} · v{{ policy.version }}</summary>
+                  <p>{{ policy.text }}</p>
+                </details>
+              </div>
+
+              <!-- Usage / cost -->
+              <div class="card" *ngIf="result.usage" style="padding:16px 20px">
+                <div class="flex" style="gap:20px;flex-wrap:wrap">
+                  <small><strong style="color:var(--text)">Extraction mode</strong><br>{{ result.usage.provider || 'unavailable' }}</small>
+                  <small><strong style="color:var(--text)">Input tokens</strong><br>{{ result.usage.input_tokens || 0 }}</small>
+                  <small><strong style="color:var(--text)">Output tokens</strong><br>{{ result.usage.output_tokens || 0 }}</small>
+                  <small *ngIf="result.usage.cost_configured">
+                    <strong style="color:var(--text)">Est. model cost</strong><br>
+                    {{ result.usage.estimated_model_cost_usd | currency:'USD':'symbol':'1.6-6' }}
+                  </small>
+                </div>
+              </div>
+
+              <!-- Review section -->
+              <div class="card review-section"
+                   *ngIf="selected.status==='AWAITING_CLARIFICATION' || selected.status==='AWAITING_APPROVAL'">
+                <h3 style="margin-top:0">
+                  {{ selected.status==='AWAITING_CLARIFICATION' ? '🔧 Resolve missing evidence' : '⚖️ Final reviewer decision' }}
+                </h3>
+
+                <div class="corrections-grid" *ngIf="selected.status==='AWAITING_CLARIFICATION'">
+                  <div>
+                    <label for="rLicense">Corrected license number</label>
+                    <input id="rLicense" [(ngModel)]="correctionLicense" placeholder="DEMO-VA-1001">
+                  </div>
+                  <div>
+                    <label for="rState">State</label>
+                    <input id="rState" [(ngModel)]="correctionState" maxlength="2" placeholder="VA">
+                  </div>
+                  <div>
+                    <label for="rYears">Experience (years)</label>
+                    <input id="rYears" type="number" min="0" max="60" [(ngModel)]="correctionYears">
+                  </div>
+                </div>
+
+                <label for="reviewNotes">Reviewer notes &amp; evidence</label>
+                <textarea id="reviewNotes" [(ngModel)]="notes" rows="4" maxlength="2000"
+                          placeholder="Explain the correction, findings, or approval decision…"></textarea>
+
+                <div class="flex wrap" style="gap:10px;margin-top:16px">
+                  <button *ngIf="selected.status==='AWAITING_CLARIFICATION'"
+                          (click)="review('clarify')" [disabled]="busy || notes.trim().length < 3">
+                    💾 Save &amp; resume workflow
+                  </button>
+                  <ng-container *ngIf="selected.status==='AWAITING_APPROVAL'">
+                    <button (click)="review('approve')" [disabled]="busy || notes.trim().length < 3">
+                      ✅ Approve recommendation
+                    </button>
+                    <button class="danger" (click)="review('reject')" [disabled]="busy || notes.trim().length < 3">
+                      ✗ Override recommendation
+                    </button>
+                  </ng-container>
+                </div>
+                <small style="margin-top:10px">Approval confirms the AI recommendation. It does not automatically hire or reject a candidate.</small>
+              </div>
+
+              <!-- Recorded decision -->
+              <div class="decision-recorded" *ngIf="result.decision">
+                <div class="flex" style="gap:12px;align-items:flex-start">
+                  <span style="font-size:24px">{{ result.decision.action === 'approve' ? '✅' : '🔄' }}</span>
+                  <div>
+                    <strong>{{ result.decision.action === 'approve' ? 'Recommendation approved' : 'Recommendation overridden' }}</strong>
+                    <p style="margin:4px 0 0;font-size:13px">{{ result.decision.notes }}</p>
+                    <small>By {{ result.decision.reviewer }}</small>
+                  </div>
+                </div>
+              </div>
+
+            </ng-container>
+
+            <!-- Audit trail -->
+            <div class="card">
+              <div class="flex between" style="margin-bottom:16px">
+                <h3 style="margin:0">📜 Audit trail</h3>
+                <button class="ghost" (click)="loadAudit()">Load events</button>
+              </div>
+              <div *ngIf="!events.length" class="muted" style="font-size:13px;padding:12px 0">No events loaded. Click "Load events".</div>
+              <div class="timeline">
+                <div class="timeline-item" *ngFor="let event of events">
+                  <div class="timeline-dot"></div>
+                  <strong>{{ human(event.action) }}</strong>
+                  <small>{{ event.actor }} · {{ event.created_at | date:'medium' }}</small>
+                  <pre *ngIf="event.detail">{{ event.detail | json }}</pre>
+                </div>
+              </div>
+            </div>
+
+          </ng-container>
+        </div>
+
+      </div>
+    </div>
+    <!-- end assessments view -->
+
   </div>
-  <footer>Local portfolio starter · Claims remain separate from simulated registry checks · Human decisions are recorded</footer>
-</main>
+  <!-- end page-content -->
+
+  <footer style="text-align:center;padding:24px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+    ClinReady · Local portfolio demo · Synthetic data only · Claims remain separate from simulated registry checks · Human decisions are recorded
+  </footer>
+
+</div>
