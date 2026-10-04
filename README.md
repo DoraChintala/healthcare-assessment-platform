@@ -3,6 +3,20 @@
 > **AI-powered staffing intelligence for healthcare teams.**  
 > Automates candidate screening, resume-to-job matching, license verification, and qualification workflows — with full audit transparency and mandatory human review at every decision.
 
+### 🔗 [**► Live Demo**](https://clinready-ui.onrender.com) &nbsp;·&nbsp; [Source Code](https://github.com/DoraChintala/healthcare-assessment-platform)
+
+> ⏱️ The live demo is hosted on Render's free tier — the first load may take **~30–50 seconds** while the backend wakes from sleep. Subsequent requests are fast.
+>
+> **Demo logins:** `reviewer` / `Review@123` (full review access) · `nurse.sarah` / `Nurse@123` (candidate view)
+
+![Angular](https://img.shields.io/badge/Angular-19-DD0031?logo=angular&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4-6DB33F?logo=springboot&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agentic_Workflow-1C3C3C)
+![Qdrant](https://img.shields.io/badge/Qdrant-Vector_DB-DC244C)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+
 ---
 
 ## 🧠 AI Engineering Highlights
